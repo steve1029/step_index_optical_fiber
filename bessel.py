@@ -128,8 +128,30 @@ class stepidxoptfiber:
         self.n2 = n2 # the index of the cladding.
         self.wvl = wavelength # the wavelength of the input wave.
 
-    def setup_func(self, n):
-        """Numerically find k_z in a step-index optical fiber.
+        self.k0 = 2*np.pi / self.wvl 
+        self.k1 = 2*np.pi * n1 / self.wvl
+        self.k2 = 2*np.pi * n2 / self.wvl
+
+        self.hs = np.linspace(self.k2, self.k1, 600)
+
+    def find_RHS(self, n, x, y, k1, k2):
+
+        eta1 = (special.jvp(n,x)/x/special.jv(n,x))
+        eta2 = (special.kvp(n,y)/y/special.kv(n,y))
+
+        val = (eta1*(k1**2) + eta2*(k2**2)) * (eta1 + eta2) 
+
+        return val
+
+    def find_LHS(self, n, h, x, y):
+
+        deno = ((1/x**2 + 1/y**2)**2)
+        val = (n*h)**2 * deno
+
+        return val
+
+    def find_h(self, h, n):
+        """Numerically find h in a step-index optical fiber.
 
         Parameters
         ----------
@@ -142,42 +164,31 @@ class stepidxoptfiber:
         None
         """
 
-        self.k0 = 2*np.pi / self.wvl 
-        self.k1 = 2*np.pi * n1 / self.wvl
-        self.k2 = 2*np.pi * n2 / self.wvl
+        self.u = np.sqrt(self.k1**2 - h**2)
+        self.w = np.sqrt(h**2 - self.k2**2)
+        self.x = self.u * self.cr 
+        self.y = self.w * self.cr
 
-        self.h = np.linspace(self.k2, self.k1, 600)
+        RHS = self.find_RHS(n, self.x, self.y, self.k1, self.k2)
+        LHS = self.find_LHS(n, h, self.x, self.y)
+        val = RHS - LHS
 
-        u = np.sqrt(self.k1**2 - self.h**2)
-        w = np.sqrt(self.h**2 - self.k2**2)
-        x = u * self.cr 
-        y = w * self.cr
+        return val
 
-        eta1 = (special.jvp(n,x)/x/special.jv(n,x))
-        eta2 = (special.kvp(n,y)/y/special.kv(n,y))
-        deno = ((1/x**2 + 1/y**2)**2)
-        self.RHS = (eta1*(self.k1**2) + eta2*(self.k2**2)) * (eta1 + eta2) 
-        self.LHS = (n*self.h)**2 * deno
-        self.fun = self.RHS - self.LHS
+    def find_roots(self,):
 
-        return self.h, self.fun
-
-    def target_func(self, h):
-
-        return
-
-    def find_roots(self):
-
-        x0, r = optimize.brentq(self.target_func(self.h), self.k2, self.k1)
+        x0, r = optimize.brentq(self.find_h, self.k2, self.k1, args=(self.n))
 
         return x0, r
 
-    def plot(self):
+    def plot(self, x, y, eta1, eta2):
+
+        self.LHS = self.find_LHS()
 
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(9,3))
-        axes[0].plot(self.h, self.LHS, label='LHS')
-        axes[0].plot(self.h, self.RHS, label='RHS')
-        axes[1].plot(self.h, self.fun, label='RHS-LHS')
+        axes[0].plot(self.hs, self.LHS, label='LHS')
+        axes[0].plot(self.hs, self.RHS, label='RHS')
+        axes[1].plot(self.hs, self.val, label='RHS-LHS')
 
         if n == 0: axes[0].set_ylim(-.1, 0.2)
         else: axes[0].set_ylim(-.2, 5)
@@ -203,5 +214,5 @@ if __name__ == '__main__':
     fiber = stepidxoptfiber(a, n1, n2, wvl)
 
     for n in range(10): 
-        h, func = fiber.setup_func(n)
+        func = fiber.find_h(n)
         x0, r = fiber.find_roots()
